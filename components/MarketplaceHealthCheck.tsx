@@ -872,7 +872,7 @@ export default function MarketplaceHealthCheck() {
                       <span>Konsultasi dengan Alin</span>
                     </a>
                     <a
-                      href={`https://wa.me/6285171107290?text=${getWAMessage()}`}
+                      href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 max-w-xs bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
@@ -1054,7 +1054,7 @@ export default function MarketplaceHealthCheck() {
                       <span>Konsultasi dengan Alin</span>
                     </a>
                     <a
-                      href={`https://wa.me/6285171107290?text=${getWAMessage()}`}
+                      href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
