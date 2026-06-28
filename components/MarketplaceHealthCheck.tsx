@@ -21,6 +21,7 @@ import {
   MessageCircle,
   Loader2,
 } from "lucide-react";
+import * as fbq from "@/lib/fpixel";
 
 type Platform = "Shopee" | "Tiktok";
 
@@ -75,9 +76,33 @@ export default function MarketplaceHealthCheck() {
       Math.random().toString(36).substring(2, 15),
   );
 
+  // Meta attribution signals. Captured from the URL (fbclid) and cookies,
+  // so they survive even if the browser Pixel script gets blocked.
+  const [fbc, setFbc] = useState<string | null>(null);
+  const [fbp, setFbp] = useState<string | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string>("");
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
+
+  useEffect(() => {
+    setSourceUrl(window.location.href);
+
+    // 1) fbc — prefer the live cookie set by the Pixel, otherwise build it
+    //    ourselves from the fbclid in the URL (blocker-proof).
+    const fbcCookie = document.cookie.match(/_fbc=([^;]+)/);
+    if (fbcCookie) {
+      setFbc(decodeURIComponent(fbcCookie[1]));
+    } else {
+      const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+      if (fbclid) setFbc(`fb.1.${Date.now()}.${fbclid}`);
+    }
+
+    // 2) fbp — browser id cookie, included when available for better matching.
+    const fbpCookie = document.cookie.match(/_fbp=([^;]+)/);
+    if (fbpCookie) setFbp(decodeURIComponent(fbpCookie[1]));
+  }, []);
 
   const formatIDR = (val: number | string | null) => {
     if (val === null || val === "") return "";
@@ -280,6 +305,7 @@ export default function MarketplaceHealthCheck() {
   const saveToSheet = async (
     sheetName: "full_submit" | "partial_submit",
     score?: number,
+    eventId?: string,
   ) => {
     let success = false;
     let attempts = 0;
@@ -298,6 +324,11 @@ export default function MarketplaceHealthCheck() {
             sheetName,
             submissionId,
             ...(score !== undefined ? { score } : {}),
+            // Meta attribution + dedup signals
+            fbc,
+            fbp,
+            eventId,
+            eventSourceUrl: sourceUrl,
           }),
         });
         if (response.ok) {
@@ -317,7 +348,23 @@ export default function MarketplaceHealthCheck() {
   const handleCalculate = async () => {
     setIsSaving(true);
     const currentResults = calculateResults(data);
-    await saveToSheet("full_submit", currentResults.score);
+
+    // Shared id so the browser pixel event and the server CAPI event
+    // are deduplicated by Meta into a single conversion.
+    const eventId = `CompleteRegistration_${submissionId}`;
+
+    // Browser pixel (may be blocked — server will cover it).
+    fbq.event(
+      "CompleteRegistration",
+      {
+        content_name: "Health Check Completed",
+        value: currentResults.score,
+        currency: "IDR",
+      },
+      eventId,
+    );
+
+    await saveToSheet("full_submit", currentResults.score, eventId);
     setIsSaving(false);
     setIsCalculated(true);
     setStep(4);
@@ -560,7 +607,13 @@ export default function MarketplaceHealthCheck() {
                   </button>
                   <button
                     onClick={() => {
-                      saveToSheet("partial_submit");
+                      const eventId = `Lead_${submissionId}`;
+                      fbq.event(
+                        "Lead",
+                        { content_name: "Profiling Submitted" },
+                        eventId,
+                      );
+                      saveToSheet("partial_submit", undefined, eventId);
                       setStep(2);
                     }}
                     className="btn-primary flex items-center gap-2"
@@ -618,7 +671,13 @@ export default function MarketplaceHealthCheck() {
                   </button>
                   <button
                     onClick={() => {
-                      saveToSheet("partial_submit");
+                      // Save updated data, but reuse the same Lead event_id
+                      // from step 1 so Meta dedupes it (no double Lead).
+                      saveToSheet(
+                        "partial_submit",
+                        undefined,
+                        `Lead_${submissionId}`,
+                      );
                       setStep(3);
                     }}
                     className="btn-primary flex items-center gap-2"
@@ -866,6 +925,11 @@ export default function MarketplaceHealthCheck() {
                       href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() =>
+                        fbq.event("Contact", {
+                          content_name: "WhatsApp Consultation",
+                        })
+                      }
                       className="flex-1 max-w-xs bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
                     >
                       <MessageCircle size={24} />
@@ -875,6 +939,11 @@ export default function MarketplaceHealthCheck() {
                       href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() =>
+                        fbq.event("Contact", {
+                          content_name: "WhatsApp Consultation",
+                        })
+                      }
                       className="flex-1 max-w-xs bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
                     >
                       <MessageCircle size={24} />
@@ -1048,6 +1117,11 @@ export default function MarketplaceHealthCheck() {
                       href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() =>
+                        fbq.event("Contact", {
+                          content_name: "WhatsApp Consultation",
+                        })
+                      }
                       className="flex-1 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
                     >
                       <MessageCircle size={24} />
@@ -1057,6 +1131,11 @@ export default function MarketplaceHealthCheck() {
                       href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() =>
+                        fbq.event("Contact", {
+                          content_name: "WhatsApp Consultation",
+                        })
+                      }
                       className="flex-1 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
                     >
                       <MessageCircle size={24} />
