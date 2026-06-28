@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
+import { sendCapiEvent } from "@/lib/capi";
 
 const SPREADSHEET_ID = "10gCm-fgHZ6eUY_-W0CGv-1JzFNtZDX7aeNdNUy24dnI";
 
@@ -54,7 +55,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { sheetName = "full_submit", ...data } = body;
+    const {
+      sheetName = "full_submit",
+      // tracking fields (not written to the sheet)
+      fbc,
+      fbp,
+      eventId,
+      eventSourceUrl,
+      ...data
+    } = body;
 
     const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     let privateKey = process.env.GOOGLE_PRIVATE_KEY;
@@ -123,6 +132,48 @@ export async function POST(req: NextRequest) {
 
     await sheet.addRow(row);
     console.log(`[${requestId}] Data saved to "${sheetName}"`);
+
+    // ---- Conversions API (server-side) ----
+    // Fire after the sheet write. Failures here never affect the response.
+    try {
+      const clientIp =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("x-real-ip") ||
+        undefined;
+      const clientUserAgent = req.headers.get("user-agent") || undefined;
+
+      // Map the funnel stage to a standard Meta event.
+      const eventName =
+        sheetName === "full_submit" ? "CompleteRegistration" : "Lead";
+
+      // Use the shared submissionId-based id so the browser pixel
+      // and this server event get deduplicated by Meta.
+      const finalEventId =
+        eventId || `${eventName}_${data.submissionId ?? requestId}`;
+
+      const customData: Record<string, any> = {};
+      if (sheetName === "full_submit" && typeof data.score === "number") {
+        customData.value = data.score;
+        customData.currency = "IDR";
+      }
+
+      await sendCapiEvent({
+        eventName,
+        eventId: finalEventId,
+        eventSourceUrl,
+        user: {
+          phoneNumber: data.phoneNumber,
+          userName: data.userName,
+          fbc,
+          fbp,
+          clientIp,
+          clientUserAgent,
+        },
+        customData,
+      });
+    } catch (capiErr) {
+      console.error(`[${requestId}] CAPI block error (ignored):`, capiErr);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
